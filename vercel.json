@@ -1,0 +1,11 @@
+{
+  "rewrites": [
+    { "source": "/api/v1/:path*", "destination": "https://plantsync-backend-a8c5cbd9c5bggfg3.mexicocentral-01.azurewebsites.net/api/v1/:path*" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "build": {
+    "env": {
+      "VITE_API_BASE_URL": "/api/v1"
+    }
+  }
+}
