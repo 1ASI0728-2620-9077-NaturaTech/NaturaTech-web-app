@@ -55,7 +55,7 @@ const store = useDemoStore();
           <i class="pi pi-wallet" aria-hidden="true"></i>
         </div>
         <p class="muted">
-          MetaMask será tu acceso a las medallas en Ethereum Sepolia.
+          Rabby Wallet será tu acceso a las medallas en Ethereum Sepolia.
         </p>
         <div class="wallet-box">
           <i class="pi pi-wallet" aria-hidden="true"></i>
@@ -80,7 +80,7 @@ const store = useDemoStore();
           :disabled="!demo"
           @click="store.walletConnected = true"
         >
-          Simular conexión de MetaMask</button
+          Simular conexión de Rabby Wallet</button
         ><button
           v-else
           class="ps-btn ps-btn--outline wide-button"
@@ -130,7 +130,7 @@ const store = useDemoStore();
         <p class="privacy-note" role="status">
           {{
             demo
-              ? "Esta demo no abre MetaMask, no firma y no envía transacciones."
+              ? "Esta demo no abre Rabby Wallet, no firma y no envía transacciones."
               : "La emisión se habilitará después de verificar los logros."
           }}
         </p>

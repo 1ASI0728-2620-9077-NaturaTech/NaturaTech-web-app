@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { ref, nextTick, onMounted, onBeforeUnmount } from "vue";
-import axios from "axios";
+import http from "@/shared/services/http-common";
 import { PlantService } from "@/plant-management/services/plant-api.service";
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 import { ProfileApiService } from "@/profile-management/services/profile-api.service";
@@ -82,14 +82,14 @@ async function sendMessage(text?: string) {
     // Build messages array with system prompt + conversation history
     const apiMessages = [
       { role: "system", content: buildSystemPrompt() },
-      ...messages.value.map((m) => ({
+      ...messages.value.slice(-20).map((m) => ({
         role: m.sender === "user" ? "user" : "assistant",
         content: m.content,
       })),
     ];
 
-    const response = await axios.post(
-      "/api/chat",
+    const response = await http.post(
+      "/chat",
       { messages: apiMessages },
       { timeout: 30000, signal: controller.signal },
     );

@@ -19,19 +19,19 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/health",
     name: "health",
-    component: () => import("@/workspace/pages/health.page.vue"),
+    component: () => import("@/workspace/pages/live-health.page.vue"),
     meta: { requiresAuth: true, minimumRole: "user" },
   },
   {
     path: "/assistant",
     name: "assistant",
-    component: () => import("@/workspace/pages/assistant.page.vue"),
+    component: () => import("@/workspace/pages/live-assistant.page.vue"),
     meta: { requiresAuth: true, minimumRole: "user" },
   },
   {
     path: "/rewards",
     name: "rewards",
-    component: () => import("@/workspace/pages/rewards.page.vue"),
+    component: () => import("@/workspace/pages/live-rewards.page.vue"),
     meta: { requiresAuth: true, minimumRole: "user" },
   },
   // Public routes

@@ -1,20 +1,20 @@
 /// <reference types="vitest" />
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import { resolve } from 'path'
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { resolve } from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      "@": resolve(__dirname, "src"),
     },
   },
   server: {
     proxy: {
-      '/api': {
-        target: 'https://plantsync-backend-a8c5cbd9c5bggfg3.mexicocentral-01.azurewebsites.net',
+      "/api": {
+        target: process.env.BACKEND_PROXY_TARGET || "http://127.0.0.1:8080",
         changeOrigin: true,
         secure: true,
       },
@@ -22,6 +22,6 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: "jsdom",
   },
-})
+});

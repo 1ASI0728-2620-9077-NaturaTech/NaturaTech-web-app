@@ -14,9 +14,11 @@ import type { AxiosResponse } from "axios";
 export class AuthenticationApiService {
   /** Verifies the authenticated account's roles before restoring its session. */
   async getRoles(userId: number, token: string): Promise<string[]> {
-    const response = await http.get(`/users/${userId}`, {
+    const response = await http.get("/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (response.data?.id !== userId)
+      throw new Error("Session identity mismatch");
     const roles: unknown = response.data?.roles;
     if (
       !Array.isArray(roles) ||
