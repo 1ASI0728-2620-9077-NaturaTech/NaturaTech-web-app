@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import {
   integrationApi as api,
   integrationError,
@@ -9,6 +9,7 @@ import { validateImage } from "../model";
 import { loadPersonalPlants } from "@/shared/services/personal-workspace.service";
 import type { Plant } from "@/plant-management/model/plant.entity";
 const available = ref(false),
+  capabilitiesLoaded = ref(false),
   loading = ref(true),
   busy = ref(false),
   error = ref(""),
@@ -41,6 +42,15 @@ const plants = ref<Plant[]>([]),
   file = ref<File>(),
   items = ref<Analysis[]>([]),
   current = ref<Analysis>();
+const processing = computed(
+  () =>
+    !!current.value && ["QUEUED", "PROCESSING"].includes(current.value.status),
+);
+async function retryAnalysis() {
+  renewKey();
+  current.value = undefined;
+  await submit();
+}
 let key = crypto.randomUUID(),
   timer: ReturnType<typeof setTimeout> | undefined,
   disposed = false;
@@ -66,13 +76,14 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    const [caps, , context] = await Promise.all([
+    const [caps, context] = await Promise.all([
       api.capabilities(),
-      history(),
       loadPersonalPlants(),
     ]);
     available.value = caps.plantAnalysis;
+    capabilitiesLoaded.value = true;
     plants.value = context.plants;
+    await history();
   } catch (e) {
     error.value = integrationError(e);
   } finally {
@@ -93,7 +104,7 @@ async function refresh(id: string, attempt = 0) {
   }
 }
 async function submit() {
-  if (!file.value || busy.value || !available.value) return;
+  if (!file.value || busy.value || processing.value || !available.value) return;
   busy.value = true;
   error.value = "";
   try {
@@ -143,7 +154,7 @@ onBeforeUnmount(() => {
       {{ error }}
     </p>
     <p v-if="loading" role="status">Consultando tu jardín…</p>
-    <p v-else-if="!available" class="ps-alert">
+    <p v-else-if="capabilitiesLoaded && !available" class="ps-alert">
       El servidor todavía no tiene configurado Gemini. Tu historial sigue
       disponible.
     </p>
@@ -166,7 +177,7 @@ onBeforeUnmount(() => {
           >Selecciona una fotografía<input
             type="file"
             accept="image/png,image/jpeg,image/webp"
-            :disabled="!available || busy"
+            :disabled="!available || busy || processing"
             @change="select"
         /></label>
         <p class="muted">
@@ -180,10 +191,16 @@ onBeforeUnmount(() => {
         />
         <button
           class="ps-btn ps-btn--primary"
-          :disabled="!file || busy || !available"
+          :disabled="!file || busy || !available || processing"
           @click="submit"
         >
-          {{ busy ? "Enviando…" : "Analizar fotografía" }}
+          {{
+            busy
+              ? "Enviando…"
+              : processing
+                ? "Analizando tu planta…"
+                : "Analizar fotografía"
+          }}
         </button>
       </section>
       <section class="ps-card panel" aria-live="polite">
@@ -195,9 +212,20 @@ onBeforeUnmount(() => {
             enviarla otra vez.
           </p>
           <p v-if="current.status === 'FAILED'">
-            No se pudo completar el análisis. Selecciona de nuevo la fotografía
-            para iniciar otro.
+            {{
+              integrationError({
+                response: { status: 502, data: { code: current.errorCode } },
+              })
+            }}
           </p>
+          <button
+            v-if="current.status === 'FAILED' && file"
+            class="ps-btn ps-btn--primary"
+            :disabled="busy"
+            @click="retryAnalysis"
+          >
+            Reintentar esta fotografía
+          </button>
           <h3 v-if="current.species">{{ current.species }}</h3>
           <p>{{ current.summary }}</p>
           <ul>

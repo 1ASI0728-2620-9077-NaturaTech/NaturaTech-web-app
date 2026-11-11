@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from "vue";
+import OnboardingCard from "../components/onboarding-card.vue";
+const loaded = ref(false);
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 import { loadPersonalPlants } from "@/shared/services/personal-workspace.service";
 import type { Plant } from "@/plant-management/model/plant.entity";
@@ -23,10 +25,40 @@ const plants = ref<Plant[]>([]),
   busy = ref(false),
   available = ref(false);
 const simulated = ref(false);
+const actionsAvailable = ref(false);
 let disposed = false;
+let commandTimer: ReturnType<typeof setTimeout> | undefined;
+async function pollCommands() {
+  if (disposed) return;
+  if (!busy.value) {
+    for (const command of Object.values(commands.value)) {
+      if (!["QUEUED", "SENT", "ACKNOWLEDGED"].includes(command.status))
+        continue;
+      try {
+        const updated = await api.command(command.commandId);
+        if (!disposed) commands.value[command.commandId] = updated;
+      } catch (e) {
+        if (!disposed) error.value = integrationError(e);
+      }
+    }
+  }
+  if (!disposed) commandTimer = setTimeout(pollCommands, 5000);
+}
 async function history() {
   if (!id.value) return;
-  const data = await api.conversation(id.value);
+  let data;
+  try {
+    data = await api.conversation(id.value);
+  } catch (e) {
+    if ((e as { response?: { status: number } }).response?.status !== 404)
+      throw e;
+    id.value = "";
+    messages.value = [];
+    proposals.value = {};
+    commands.value = {};
+    sessionStorage.removeItem(storageKey);
+    return;
+  }
   if (disposed) return;
   messages.value = data.messages;
   for (const message of data.messages) {
@@ -46,8 +78,12 @@ async function load() {
       loadPersonalPlants(),
     ]);
     available.value = caps.assistant;
+    actionsAvailable.value = caps.actuatorCommands;
     simulated.value = caps.iotEnvironment === "SIMULATED";
     plants.value = context.plants;
+    loaded.value = true;
+    if (!plants.value.some((p) => p.id === plantId.value))
+      plantId.value = plants.value[0]?.id ?? null;
     await history();
   } catch (e) {
     error.value = integrationError(e);
@@ -56,7 +92,13 @@ async function load() {
   }
 }
 async function send() {
-  if (busy.value || !available.value || !content.value.trim()) return;
+  if (
+    busy.value ||
+    !available.value ||
+    !plants.value.length ||
+    !content.value.trim()
+  )
+    return;
   busy.value = true;
   error.value = "";
   try {
@@ -103,9 +145,13 @@ function reset() {
   commands.value = {};
   error.value = "";
 }
-onMounted(load);
+onMounted(() => {
+  void load();
+  commandTimer = setTimeout(pollCommands, 5000);
+});
 onBeforeUnmount(() => {
   disposed = true;
+  clearTimeout(commandTimer);
 });
 </script>
 <template>
@@ -125,14 +171,26 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert" class="ps-alert ps-alert--error">
       {{ error }}
     </p>
-    <p v-if="!available && !busy" class="ps-alert">
+    <p v-if="loaded && !available && !busy" class="ps-alert">
       Gemini todavía no está configurado en el servidor.
     </p>
     <p v-if="simulated" class="ps-alert" role="status">
       Entorno IoT simulado: las acciones modifican un dispositivo virtual; no
       activan hardware físico.
     </p>
-    <section class="ps-card panel">
+    <p v-if="loaded && available && !actionsAvailable" class="workspace-notice">
+      Puedes consultar cuidados. Las acciones de riego y luz todavía necesitan
+      un dispositivo autorizado y un simulador activo.
+    </p>
+    <OnboardingCard
+      v-if="loaded && !plants.length"
+      title="Tu asistente empieza por conocer tu planta"
+      description="Necesitas agregar una planta para usar el asistente. Después podrás consultar sus cuidados y revisar acciones para su dispositivo."
+      to="/plants"
+      action="Agregar mi primera planta"
+      step="PASO 1 · CREA TU JARDÍN"
+    />
+    <section v-else class="ps-card panel assistant-panel">
       <label
         >Planta para esta consulta
         <select v-model="plantId" :disabled="busy">
@@ -208,12 +266,12 @@ onBeforeUnmount(() => {
             v-model="content"
             maxlength="500"
             rows="3"
-            :disabled="busy || !available"
+            :disabled="busy || !available || !plants.length"
             placeholder="¿Qué necesita tu planta?"
           ></textarea></label
         ><button
           class="ps-btn ps-btn--primary"
-          :disabled="busy || !available || !content.trim()"
+          :disabled="busy || !available || !plants.length || !content.trim()"
         >
           {{ busy ? "Procesando…" : "Enviar mensaje" }}
         </button>

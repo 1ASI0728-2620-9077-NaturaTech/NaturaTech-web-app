@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getRabby, encodeMessage } from "../services/rabby";
+import { getRabby, encodeMessage, walletError } from "../services/rabby";
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 describe("Rabby discovery", () => {
+  it("explains rejected and pending wallet requests without retrying automatically", () => {
+    expect(walletError({ code: 4001 })).toContain("Cancelaste");
+    expect(walletError({ code: -32002 })).toContain("pendiente");
+    expect(walletError({ code: 4900 })).toContain("conexión");
+  });
   it("selects Rabby among multiple injected wallets without requesting accounts", async () => {
     const rabby = { isRabby: true, request: vi.fn() };
     vi.stubGlobal("ethereum", {

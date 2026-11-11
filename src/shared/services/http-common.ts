@@ -2,7 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { registerRequestInterceptor } from './request.interceptor';
 import { registerResponseInterceptor } from './response.interceptor';
 
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || 'https://plantsync-backend-a8c5cbd9c5bggfg3.mexicocentral-01.azurewebsites.net/api/v1';
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 const http: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

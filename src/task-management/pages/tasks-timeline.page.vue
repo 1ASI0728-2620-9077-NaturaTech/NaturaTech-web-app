@@ -3,6 +3,7 @@ import { downloadCSV } from "@/shared/services/csv";
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 import { loadPersonalTasks } from "@/shared/services/personal-workspace.service";
 import { ref, computed, onMounted } from "vue";
+import CreateResourceDialog from "@/workspace/components/create-resource-dialog.vue";
 import { TaskApiService } from "@/task-management/services/task-api.service";
 import { PlantService } from "@/plant-management/services/plant-api.service";
 import http from "@/shared/services/http-common";
@@ -23,6 +24,25 @@ const users = ref<User[]>([]);
 const profiles = ref<Profile[]>([]);
 const loading = ref(true);
 const error = ref("");
+const creating = ref(false),
+  completing = ref<number | null>(null);
+async function completeTask(id: number) {
+  if (completing.value !== null) return;
+  const task = tasks.value.find((item) => item.id === id);
+  if (!task) return;
+  completing.value = id;
+  try {
+    await taskApi.complete(id, {
+      notes: task.notes,
+      humidity: task.humidity ?? undefined,
+    });
+    await loadData();
+  } catch {
+    error.value = "No pudimos completar el cuidado. Inténtalo de nuevo.";
+  } finally {
+    completing.value = null;
+  }
+}
 
 // Metrics
 const totalTasks = computed(() => tasks.value.length);
@@ -120,6 +140,9 @@ function exportCSV() {
           }}
         </p>
       </div>
+      <button class="ps-btn ps-btn--primary" @click="creating = true">
+        <i class="pi pi-plus" aria-hidden="true"></i> Crear tarea
+      </button>
       <button
         class="ps-btn ps-btn--outline"
         @click="exportCSV"
@@ -173,9 +196,13 @@ function exportCSV() {
       <!-- Tasks table -->
       <section style="margin-top: 2rem">
         <h2 class="section-title">Registro de Tareas ({{ tasks.length }})</h2>
-        <div v-if="tasks.length === 0" class="ps-empty">
+        <div v-if="tasks.length === 0" class="ps-empty onboarding-card">
           <i class="pi pi-check-square"></i>
-          <p>No hay tareas registradas.</p>
+          <h2>Pequeños cuidados, grandes cambios</h2>
+          <p>Organiza el próximo riego o revisión de hojas de tu jardín.</p>
+          <button class="ps-btn ps-btn--primary" @click="creating = true">
+            Añadir mi primer cuidado
+          </button>
         </div>
         <div v-else class="ps-card table-container">
           <table class="admin-table">
@@ -187,6 +214,7 @@ function exportCSV() {
                 <th>Fecha Programada</th>
                 <th>Estado</th>
                 <th>Completada</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -219,12 +247,31 @@ function exportCSV() {
                 <td>
                   {{ task.completedAt ? formatDate(task.completedAt) : "--" }}
                 </td>
+                <td>
+                  <button
+                    v-if="task.status !== 'COMPLETED'"
+                    class="ps-btn ps-btn--outline"
+                    :disabled="completing !== null"
+                    @click="completeTask(task.id)"
+                  >
+                    {{
+                      completing === task.id
+                        ? "Guardando…"
+                        : "Marcar completada"
+                    }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
     </template>
+    <CreateResourceDialog
+      v-model:visible="creating"
+      kind="task"
+      @created="loadData"
+    />
   </div>
 </template>
 

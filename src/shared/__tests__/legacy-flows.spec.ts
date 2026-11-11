@@ -59,6 +59,30 @@ beforeEach(() => {
 });
 
 describe("Existing views and API compatibility", () => {
+  it("preserves recorded notes and humidity when completing care", async () => {
+    get.mockImplementation(async (url) => ({
+      data:
+        url === "/tasks"
+          ? [{ ...task, notes: "Keep this note" }]
+          : url === "/plants"
+            ? [plant]
+            : [],
+    }));
+    vi.mocked(http.patch).mockResolvedValue({
+      data: { ...task, status: "COMPLETED" },
+    });
+    const wrapper = mount(Tasks);
+    await flushPromises();
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Marcar completada")!
+      .trigger("click");
+    await flushPromises();
+    expect(http.patch).toHaveBeenCalledWith("/tasks/6/complete", {
+      notes: "Keep this note",
+      humidity: 40,
+    });
+  });
   it("shows a recoverable tasks error instead of an empty success", async () => {
     get.mockRejectedValue(new Error("offline"));
     const wrapper = mount(Tasks);

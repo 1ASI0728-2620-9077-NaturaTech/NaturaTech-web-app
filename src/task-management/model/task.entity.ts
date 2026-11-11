@@ -8,7 +8,7 @@ export interface Task {
   completedAt?: string;
   plantId: number;
   profileId: number;
-  humidity: number;
+  humidity: number | null;
   notes?: string;
   status: string;
 }
@@ -21,7 +21,7 @@ export interface CreateTaskRequest {
   scheduledDate: string;
   plantId: number;
   profileId: number;
-  humidity: number;
+  humidity: number | null;
   notes?: string;
 }
 

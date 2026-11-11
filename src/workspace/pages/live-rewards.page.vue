@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import OnboardingCard from "../components/onboarding-card.vue";
+import { IoTApiService } from "@/iot-management/services/iot-api.service";
 import { loadPersonalPlants } from "@/shared/services/personal-workspace.service";
 import type { Plant } from "@/plant-management/model/plant.entity";
 import {
@@ -10,6 +12,7 @@ import {
 } from "../services/integration-api";
 import {
   getRabby,
+  walletError,
   walletAccount,
   encodeMessage,
   type WalletProvider,
@@ -19,6 +22,11 @@ const wallet = ref<Wallet | null>(null),
   network = ref(""),
   rewards = ref<GreenReward[]>([]),
   plants = ref<Plant[]>([]);
+const loaded = ref(false),
+  linkedPlantIds = ref<number[]>([]);
+const eligiblePlants = computed(() =>
+  plants.value.filter((p) => linkedPlantIds.value.includes(p.id)),
+);
 const busy = ref(false),
   simulated = ref(false),
   available = ref(false),
@@ -52,16 +60,23 @@ async function load() {
   busy.value = true;
   error.value = "";
   try {
-    const [caps, binding, list, context] = await Promise.all([
+    const [caps, binding, context] = await Promise.all([
       api.capabilities(),
       api.wallet(),
-      api.rewards(),
       loadPersonalPlants(),
     ]);
     available.value = caps.rewards;
     simulated.value = caps.iotEnvironment === "SIMULATED";
     wallet.value = binding;
     plants.value = context.plants;
+    loaded.value = true;
+    const nodes = await new IoTApiService().getNodesByProfile(
+      context.profile.id,
+    );
+    linkedPlantIds.value = nodes
+      .filter((n) => n.profileId === context.profile.id && n.plantId)
+      .map((n) => n.plantId);
+    const list = await api.rewards();
     rewards.value = list.items;
     for (const item of list.items) {
       try {
@@ -90,8 +105,7 @@ async function connect() {
     if (network.value !== "0xaa36a7")
       error.value = "Cambia a Ethereum Sepolia para verificar esta billetera.";
   } catch (e) {
-    error.value =
-      e instanceof Error ? e.message : "Rabby Wallet no autorizó la conexión.";
+    error.value = walletError(e);
   } finally {
     busy.value = false;
   }
@@ -140,9 +154,10 @@ async function verify() {
       throw new Error("Cuenta modificada");
     if (typeof signature !== "string") throw new Error("Firma inválida");
     wallet.value = await api.verifyWallet(challenge.challengeId, signature);
-  } catch {
-    error.value =
-      "No pudimos verificar la firma. Comprueba la cuenta y la red; puedes intentarlo de nuevo.";
+  } catch (e) {
+    error.value = (e as { response?: unknown })?.response
+      ? integrationError(e)
+      : walletError(e);
   } finally {
     busy.value = false;
   }
@@ -166,7 +181,13 @@ async function unlink() {
   }
 }
 async function enroll() {
-  if (busy.value || !plantId.value || !available.value) return;
+  if (
+    busy.value ||
+    !plantId.value ||
+    !available.value ||
+    !eligiblePlants.value.some((p) => p.id === plantId.value)
+  )
+    return;
   busy.value = true;
   error.value = "";
   try {
@@ -248,7 +269,7 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert" class="ps-alert ps-alert--error">
       {{ error }}
     </p>
-    <p v-if="!available && !busy" class="ps-alert">
+    <p v-if="loaded && !available && !busy" class="ps-alert">
       La emisión de medallas todavía no está configurada. No se enviarán
       transacciones.
     </p>
@@ -257,12 +278,35 @@ onBeforeUnmount(() => {
       software. Las medallas en Sepolia son de prueba y no acreditan cuidado
       físico.
     </p>
+    <OnboardingCard
+      v-if="loaded && !plants.length"
+      title="Una medalla empieza con una planta"
+      description="1. Agrega una planta. 2. Vincula su dispositivo. 3. Inicia un reto con lecturas continuas durante 30 días."
+      to="/plants"
+      action="Agregar planta"
+      step="PASO 1 DE 3"
+    />
+    <OnboardingCard
+      v-else-if="loaded && !eligiblePlants.length"
+      title="Conecta un dispositivo a tu planta"
+      description="Necesitamos lecturas de humedad y luz para medir su cuidado. Vincula un dispositivo y mantén el simulador en ejecución."
+      to="/iot"
+      action="Vincular dispositivo"
+      step="PASO 2 DE 3"
+    />
     <div class="feature-grid">
       <section class="ps-card panel">
         <h2>Tu billetera</h2>
         <p class="muted">
           Conectar no equivale a verificar. La firma acredita tu dirección y no
           envía fondos.
+        </p>
+        <p class="form-hint">
+          Usa un navegador con la extensión Rabby habilitada, o el navegador
+          integrado de Rabby en móvil.
+          <a href="https://rabby.io" target="_blank" rel="noopener noreferrer"
+            >Obtener Rabby Wallet</a
+          >
         </p>
         <p v-if="wallet" class="wallet-address">
           Vinculada: {{ wallet.address }}
@@ -311,13 +355,17 @@ onBeforeUnmount(() => {
         <label class="ps-input-group"
           >Tu planta<select v-model="plantId" :disabled="busy">
             <option :value="null">Selecciona una planta</option>
-            <option v-for="plant in plants" :key="plant.id" :value="plant.id">
+            <option
+              v-for="plant in eligiblePlants"
+              :key="plant.id"
+              :value="plant.id"
+            >
               {{ plant.name }}
             </option>
           </select></label
         ><button
           class="ps-btn ps-btn--primary"
-          :disabled="busy || !available || !plantId"
+          :disabled="busy || !available || !plantId || !eligiblePlants.length"
           @click="enroll"
         >
           Iniciar reto de 30 días

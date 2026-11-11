@@ -6,6 +6,19 @@ export interface WalletProvider {
   removeListener?(event: string, callback: (...args: unknown[]) => void): void;
 }
 
+export function walletError(error: unknown): string {
+  const code = (error as { code?: number })?.code;
+  if (code === 4001)
+    return "Cancelaste la solicitud en Rabby. Puedes volver a conectar cuando quieras.";
+  if (code === -32002)
+    return "Ya hay una solicitud pendiente. Abre la extensión Rabby para responderla.";
+  if (code === 4900 || code === 4901)
+    return "Rabby perdió la conexión. Abre la billetera y vuelve a intentarlo.";
+  return error instanceof Error
+    ? error.message
+    : "Rabby no pudo completar la solicitud. Abre la extensión y revisa su estado.";
+}
+
 /** Discover only the explicitly selected wallet; never select another injected wallet. */
 export async function getRabby(): Promise<WalletProvider> {
   const injected = (window as Window & { ethereum?: WalletProvider }).ethereum;

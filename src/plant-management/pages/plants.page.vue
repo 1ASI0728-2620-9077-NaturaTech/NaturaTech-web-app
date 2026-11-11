@@ -2,6 +2,8 @@
 import { downloadCSV } from "@/shared/services/csv";
 import { ref, computed, onMounted } from "vue";
 import PlantArt from "@/workspace/components/plant-art.vue";
+import CreateResourceDialog from "@/workspace/components/create-resource-dialog.vue";
+const creating = ref(false);
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 import { loadPersonalPlants } from "@/shared/services/personal-workspace.service";
 import { PlantService } from "@/plant-management/services/plant-api.service";
@@ -108,6 +110,9 @@ function exportPlantsCSV() {
           }}
         </p>
       </div>
+      <button class="ps-btn ps-btn--primary" @click="creating = true">
+        <i class="pi pi-plus" aria-hidden="true"></i> Agregar planta
+      </button>
       <button
         class="ps-btn ps-btn--outline"
         @click="exportPlantsCSV"
@@ -133,9 +138,16 @@ function exportPlantsCSV() {
       </button>
     </div>
 
-    <div v-else-if="plants.length === 0" class="ps-empty">
+    <div v-else-if="plants.length === 0" class="ps-empty onboarding-card">
       <i class="pi pi-leaf"></i>
-      <p>No hay plantas registradas.</p>
+      <h2>Tu jardín empieza con una planta</h2>
+      <p>
+        Guarda su nombre, organiza sus cuidados y descubre cómo ayudarla a
+        crecer.
+      </p>
+      <button class="ps-btn ps-btn--primary" @click="creating = true">
+        Agregar mi primera planta
+      </button>
     </div>
 
     <template v-else>
@@ -233,6 +245,11 @@ function exportPlantsCSV() {
         </table>
       </div>
     </template>
+    <CreateResourceDialog
+      v-model:visible="creating"
+      kind="plant"
+      @created="loadData"
+    />
   </div>
 </template>
 

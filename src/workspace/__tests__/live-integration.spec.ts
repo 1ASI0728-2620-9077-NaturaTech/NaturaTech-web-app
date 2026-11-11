@@ -7,6 +7,12 @@ import Rewards from "../pages/live-rewards.page.vue";
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 
 const loadPlants = vi.hoisted(() => vi.fn());
+const loadNodes = vi.hoisted(() => vi.fn());
+vi.mock("@/iot-management/services/iot-api.service", () => ({
+  IoTApiService: class {
+    getNodesByProfile = loadNodes;
+  },
+}));
 const api = vi.hoisted(() => ({
   capabilities: vi.fn(),
   analyses: vi.fn(),
@@ -47,7 +53,11 @@ beforeEach(() => {
     { id: 1, email: "test@example.test", token: "fixture" },
     "user",
   );
-  loadPlants.mockResolvedValue({ plants: [{ id: 1, name: "Monstera" }] });
+  loadPlants.mockResolvedValue({
+    profile: { id: 10 },
+    plants: [{ id: 1, name: "Monstera" }],
+  });
+  loadNodes.mockResolvedValue([{ id: 2, plantId: 1, profileId: 10 }]);
   api.capabilities.mockResolvedValue({
     plantAnalysis: true,
     assistant: true,
@@ -66,8 +76,52 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 describe("Real integration views", () => {
+  it("recovers a conversation removed from the backend", async () => {
+    sessionStorage.setItem("plantsync:conversation:1", "removed");
+    api.conversation.mockRejectedValue({ response: { status: 404 } });
+    const wrapper = mount(Assistant);
+    await flushPromises();
+    expect(sessionStorage.getItem("plantsync:conversation:1")).toBeNull();
+    expect(wrapper.find("textarea").exists()).toBe(true);
+  });
+  it("guides an empty garden before allowing assistant messages", async () => {
+    loadPlants.mockResolvedValue({ profile: { id: 10 }, plants: [] });
+    const wrapper = mount(Assistant);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Necesitas agregar una planta");
+    expect(wrapper.find("textarea").exists()).toBe(false);
+    expect(api.message).not.toHaveBeenCalled();
+  });
+  it("guides rewards through device linking without disabling wallet connection", async () => {
+    loadNodes.mockResolvedValue([]);
+    const wrapper = mount(Rewards);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Conecta un dispositivo");
+    expect(
+      wrapper
+        .findAll("button")
+        .find((b) => b.text().includes("Iniciar reto"))!
+        .attributes("disabled"),
+    ).toBeDefined();
+    expect(
+      wrapper
+        .findAll("button")
+        .find((b) => b.text().includes("Conectar Rabby"))!
+        .attributes("disabled"),
+    ).toBeUndefined();
+  });
+  it("keeps upload usable when only history fails", async () => {
+    api.analyses.mockRejectedValue(new Error("history unavailable"));
+    const wrapper = mount(Health);
+    await flushPromises();
+    expect(
+      wrapper.get("input[type=file]").attributes("disabled"),
+    ).toBeUndefined();
+    expect(wrapper.text()).not.toContain("no tiene configurado Gemini");
+  });
   it("keeps real uploads disabled when the server has not enabled Gemini", async () => {
     api.capabilities.mockResolvedValue({ plantAnalysis: false });
     const wrapper = mount(Health);
@@ -124,7 +178,7 @@ describe("Real integration views", () => {
     await wrapper.get("textarea").setValue("Hola");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
-    expect(api.message).toHaveBeenCalledWith("conversation", "Hola", null);
+    expect(api.message).toHaveBeenCalledWith("conversation", "Hola", 1);
     expect(sessionStorage.getItem("plantsync:conversation:1")).toBe(
       "conversation",
     );

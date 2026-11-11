@@ -3,6 +3,13 @@ import { downloadCSV } from "@/shared/services/csv";
 import { useAuthenticationStore } from "@/iam/services/authentication.store";
 import { loadPersonalPlants } from "@/shared/services/personal-workspace.service";
 import { ref, onMounted } from "vue";
+import CreateResourceDialog from "@/workspace/components/create-resource-dialog.vue";
+const creating = ref(false),
+  selectedNode = ref<string>();
+function openCreate(code?: string) {
+  selectedNode.value = code;
+  creating.value = true;
+}
 import { IoTApiService } from "@/iot-management/services/iot-api.service";
 import http from "@/shared/services/http-common";
 import type { IoTNode } from "@/iot-management/model/iot-node.entity";
@@ -116,6 +123,9 @@ function exportNodesCSV() {
           }}
         </p>
       </div>
+      <button class="ps-btn ps-btn--primary" @click="openCreate()">
+        <i class="pi pi-plus" aria-hidden="true"></i> Vincular nuevo dispositivo
+      </button>
       <button
         class="ps-btn ps-btn--outline"
         @click="exportNodesCSV"
@@ -159,14 +169,15 @@ function exportNodesCSV() {
       <section class="iot-section">
         <h2 class="section-title">Todos los Nodos ({{ nodes.length }})</h2>
         <div class="ps-card table-container">
-          <table class="admin-table">
+          <table v-if="nodes.length" class="admin-table">
             <thead>
               <tr>
                 <th>Node Code</th>
-                <th>Status</th>
+                <th>Registro</th>
                 <th>Plant ID</th>
                 <th>Usuario</th>
                 <th>Creado</th>
+                <th>Vinculación</th>
               </tr>
             </thead>
             <tbody>
@@ -185,22 +196,44 @@ function exportNodesCSV() {
                           : 'ps-badge--medium'
                     "
                   >
-                    {{ node.status }}
+                    {{ node.status === "ONLINE" ? "Registrado" : node.status }}
                   </span>
                 </td>
                 <td>{{ node.plantId || "--" }}</td>
                 <td>{{ getUserEmail(node.profileId) }}</td>
                 <td>{{ formatDate(node.createdAt) }}</td>
+                <td>
+                  <button
+                    v-if="!node.plantId"
+                    class="ps-btn ps-btn--outline"
+                    @click="openCreate(node.nodeCode)"
+                  >
+                    Vincular a una planta</button
+                  ><span v-else>Planta vinculada</span>
+                </td>
               </tr>
             </tbody>
           </table>
-          <div v-if="nodes.length === 0" class="ps-empty">
+          <div v-if="nodes.length === 0" class="ps-empty onboarding-card">
             <i class="pi pi-microchip"></i>
-            <p>No se encontraron nodos IoT.</p>
+            <h2>Escucha lo que tu planta necesita</h2>
+            <p>
+              Vincula un dispositivo para conocer su humedad, luz y temperatura.
+              También puedes usar un simulador.
+            </p>
+            <button class="ps-btn ps-btn--primary" @click="openCreate()">
+              Vincular nuevo dispositivo
+            </button>
           </div>
         </div>
       </section>
     </template>
+    <CreateResourceDialog
+      v-model:visible="creating"
+      kind="device"
+      :existing-node-code="selectedNode"
+      @created="loadData"
+    />
   </div>
 </template>
 

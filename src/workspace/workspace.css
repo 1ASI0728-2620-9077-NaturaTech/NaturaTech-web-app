@@ -1653,6 +1653,120 @@ button.ps-sidebar__link {
     gap: 20px;
   }
 }
+.onboarding-card {
+  position: relative;
+  padding: clamp(28px, 5vw, 56px);
+  margin: 20px 0;
+  border: 1px solid var(--ps-border);
+  border-radius: 24px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ps-primary) 10%, var(--ps-surface)),
+    var(--ps-surface)
+  );
+  text-align: center;
+}
+.onboarding-card h2 {
+  font-size: clamp(24px, 3vw, 34px);
+  letter-spacing: -0.035em;
+  margin: 18px 0 12px;
+}
+.onboarding-card p {
+  max-width: 520px;
+  margin: 0 auto 24px;
+  line-height: 1.7;
+  color: var(--ps-text-secondary);
+}
+.onboarding-card__icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin: 24px auto 0;
+  border-radius: 20px;
+  background: var(--ps-surface);
+  color: var(--ps-primary);
+  font-size: 24px;
+}
+.garden-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 22px 0 0;
+  min-width: 0;
+}
+.garden-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ps-text);
+}
+.garden-form input,
+.garden-form select,
+.garden-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 1px solid var(--ps-border);
+  border-radius: 12px;
+  background: var(--ps-surface);
+  color: var(--ps-text);
+  font: inherit;
+  font-weight: 400;
+}
+.garden-form input:focus,
+.garden-form select:focus,
+.garden-form textarea:focus {
+  outline: 2px solid var(--ps-primary);
+  outline-offset: 2px;
+}
+.garden-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.garden-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--ps-border);
+}
+.form-hint {
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--ps-text-secondary);
+}
+.assistant-panel {
+  max-width: 900px;
+  margin-inline: auto;
+}
+.assistant-panel .live-message {
+  padding: 20px;
+  margin: 14px 0;
+  border: 1px solid var(--ps-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ps-primary) 4%, var(--ps-surface));
+}
+.ps-page-header > div:first-child {
+  margin-right: auto;
+}
+@media (max-width: 540px) {
+  .garden-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .garden-form-actions {
+    flex-wrap: wrap;
+  }
+  .ps-page-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
