@@ -88,7 +88,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/chatbot",
     name: "chatbot",
-    component: () => import("@/chatbot/pages/chatbot.page.vue"),
+    redirect: "/assistant",
     meta: { requiresAuth: true, minimumRole: "user" },
   },
   {

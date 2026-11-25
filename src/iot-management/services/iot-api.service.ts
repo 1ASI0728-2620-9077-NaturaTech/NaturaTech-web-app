@@ -40,12 +40,12 @@ export class IoTApiService {
 
   linkPlant(nodeCode: string, plantId: number): Promise<IoTNode> {
     return http
-      .patch(`/iot/nodes/${nodeCode}/link-plant`, { plantId })
+      .patch(`/iot/nodes/${encodeURIComponent(nodeCode)}/link-plant`, { plantId })
       .then((r) => r.data);
   }
 
   unlinkPlant(nodeCode: string): Promise<IoTNode> {
-    return http.post(`/iot/nodes/${nodeCode}/unlink`).then((r) => r.data);
+    return http.post(`/iot/nodes/${encodeURIComponent(nodeCode)}/unlink`).then((r) => r.data);
   }
 
   updateDesiredState(
@@ -53,12 +53,12 @@ export class IoTApiService {
     state: ActuatorState,
   ): Promise<ActuatorState> {
     return http
-      .put(`/iot/nodes/${nodeCode}/actuators/desired`, state)
+      .put(`/iot/nodes/${encodeURIComponent(nodeCode)}/actuators/desired`, state)
       .then((r) => r.data);
   }
 
   getSyncStatus(nodeCode: string): Promise<any> {
-    return http.get(`/iot/nodes/${nodeCode}/sync/status`).then((r) => r.data);
+    return http.get(`/iot/nodes/${encodeURIComponent(nodeCode)}/sync/status`).then((r) => r.data);
   }
 
   createActuatorCommand(

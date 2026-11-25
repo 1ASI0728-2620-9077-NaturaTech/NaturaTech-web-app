@@ -74,7 +74,11 @@ export const integrationApi = {
       .post<{
         reply: string;
         proposal: ActionProposal | null;
-      }>(`/agent/conversations/${encodeURIComponent(id)}/messages`, { content, plantId }, { timeout: 55000 })
+      }>(
+        `/agent/conversations/${encodeURIComponent(id)}/messages`,
+        { content, plantId },
+        { timeout: 55000 },
+      )
       .then((r) => r.data),
   proposal: (id: string) =>
     http
@@ -129,7 +133,7 @@ export const integrationApi = {
       .post<GreenReward>(
         `/rewards/${encodeURIComponent(id)}/claim`,
         {},
-        { headers: { "Idempotency-Key": id } },
+        { headers: { "Idempotency-Key": id }, timeout: 55000 },
       )
       .then((r) => r.data),
 };
@@ -137,6 +141,40 @@ export function integrationError(error: unknown): string {
   const code = (error as { response?: { data?: { code?: string } } })?.response
     ?.data?.code;
   const messages: Record<string, string> = {
+    IMAGE_FORMAT:
+      "No pudimos leer la fotografía. Selecciona un JPG, PNG o WebP válido.",
+    IMAGE_INVALID:
+      "La imagen está dañada o no se pudo abrir. Prueba con otra fotografía.",
+    IMAGE_SIZE:
+      "La fotografía supera el tamaño permitido. Selecciona una de hasta 10 MB.",
+    IMAGE_DIMENSIONS:
+      "La resolución de la imagen es demasiado alta. Redúcela a un máximo de 12 megapíxeles.",
+    WATERING_NOT_NEEDED:
+      "La humedad actual no requiere riego. Puedes consultar las últimas lecturas antes de volver a intentarlo.",
+    WATERING_THRESHOLD_REQUIRED:
+      "Configura el umbral de humedad de la planta antes de solicitar riego.",
+    DEVICE_COMMAND_IN_PROGRESS:
+      "El dispositivo ya tiene una acción pendiente. Espera a que termine y actualiza su estado.",
+    SENSOR_DATA_MISSING:
+      "Aún no hay lecturas de este dispositivo. Inicia el simulador y vuelve a consultar.",
+    MINT_FEE_LIMIT:
+      "La emisión supera el límite de coste del servicio. Inténtalo más tarde; no se envió la transacción.",
+    GAS_PRICE_LIMIT:
+      "La red está superando el límite de coste permitido. La emisión se ha detenido antes de enviar.",
+    GAS_ESTIMATION_FAILED:
+      "No se pudo validar la emisión en la red. Actualiza el estado antes de volver a intentarlo.",
+    MINTER_INSUFFICIENT_FUNDS:
+      "La cuenta emisora del servicio necesita ETH de prueba. Contacta con el administrador.",
+    MINTER_NOT_INITIALIZED:
+      "El servicio de medallas está iniciándose. Espera un momento y actualiza el estado.",
+    BADGE_CONTRACT_MISSING:
+      "El contrato de medallas requiere revisar su configuración en el servidor.",
+    SEPOLIA_UNAVAILABLE:
+      "No pudimos conectar con Sepolia. Actualiza el estado antes de volver a solicitar una medalla.",
+    WALLET_REQUIRED:
+      "Conecta y verifica tu billetera antes de reclamar una medalla.",
+    THRESHOLDS_INVALID:
+      "Los umbrales de esta planta no son válidos. Revisa sus límites de humedad y luz.",
     GEMINI_CREDENTIALS_REJECTED:
       "El servicio de IA necesita revisar su autorización. Contacta con soporte; no es un problema de tu fotografía.",
     GEMINI_MODEL_UNAVAILABLE:

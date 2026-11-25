@@ -36,8 +36,49 @@ const matched = computed(
   () =>
     network.value === "0xaa36a7" &&
     !!account.value &&
+    wallet.value?.chainId === 11155111 &&
     wallet.value?.address.toLowerCase() === account.value,
 );
+const walletStep = computed(() =>
+  !account.value
+    ? 1
+    : network.value !== "0xaa36a7"
+      ? 2
+      : !matched.value
+        ? 3
+        : 4,
+);
+const rewardLabels: Record<string, string> = {
+  IN_PROGRESS: "En progreso",
+  ELIGIBLE: "Lista para reclamar",
+  SUBMITTED: "Confirmando en Sepolia",
+  CONFIRMED: "Medalla emitida",
+  FAILED: "Emisión pendiente de revisión",
+};
+let rewardTimer: ReturnType<typeof setTimeout> | undefined;
+let disposed = false;
+function scheduleRewards() {
+  clearTimeout(rewardTimer);
+  if (disposed || !rewards.value.some((r) => r.status === "SUBMITTED")) return;
+  rewardTimer = setTimeout(async () => {
+    if (disposed) return;
+    if (!busy.value)
+      for (const item of rewards.value.filter(
+        (r) => r.status === "SUBMITTED",
+      )) {
+        try {
+          const updated = await api.reward(item.id);
+          if (!disposed)
+            rewards.value = rewards.value.map((r) =>
+              r.id === updated.id ? updated : r,
+            );
+        } catch (e) {
+          if (!disposed) error.value = integrationError(e);
+        }
+      }
+    scheduleRewards();
+  }, 15000);
+}
 let provider: WalletProvider | undefined,
   generation = 0;
 function changed() {
@@ -57,41 +98,65 @@ async function providerInstance() {
   return provider;
 }
 async function load() {
+  if (disposed) return;
   busy.value = true;
   error.value = "";
   try {
-    const [caps, binding, context] = await Promise.all([
+    const [caps, binding, context, list] = await Promise.allSettled([
       api.capabilities(),
       api.wallet(),
       loadPersonalPlants(),
+      api.rewards(),
     ]);
-    available.value = caps.rewards;
-    simulated.value = caps.iotEnvironment === "SIMULATED";
-    wallet.value = binding;
-    plants.value = context.plants;
+    if (disposed) return;
     loaded.value = true;
-    const nodes = await new IoTApiService().getNodesByProfile(
-      context.profile.id,
-    );
-    linkedPlantIds.value = nodes
-      .filter((n) => n.profileId === context.profile.id && n.plantId)
-      .map((n) => n.plantId);
-    const list = await api.rewards();
-    rewards.value = list.items;
-    for (const item of list.items) {
+    for (const result of [caps, binding, context, list]) {
+      if (result.status === "rejected")
+        error.value = integrationError(result.reason);
+    }
+    available.value = caps.status === "fulfilled" && caps.value.rewards;
+    if (caps.status === "fulfilled")
+      simulated.value = caps.value.iotEnvironment === "SIMULATED";
+    wallet.value = binding.status === "fulfilled" ? binding.value : null;
+    if (context.status === "fulfilled") {
+      plants.value = context.value.plants;
       try {
-        const updated = await api.reward(item.id);
-        rewards.value = rewards.value.map((r) =>
-          r.id === updated.id ? updated : r,
+        const nodes = await new IoTApiService().getNodesByProfile(
+          context.value.profile.id,
         );
+        if (disposed) return;
+        linkedPlantIds.value = nodes
+          .filter((n) => n.profileId === context.value.profile.id && n.plantId)
+          .map((n) => n.plantId);
       } catch (e) {
         error.value = integrationError(e);
+        linkedPlantIds.value = [];
       }
     }
-  } catch (e) {
-    error.value = integrationError(e);
+    if (list.status === "fulfilled") {
+      rewards.value = list.value.items;
+      for (const item of list.value.items.filter(
+        (r) =>
+          r.status === "IN_PROGRESS" ||
+          r.status === "ELIGIBLE" ||
+          r.status === "SUBMITTED",
+      )) {
+        try {
+          const updated = await api.reward(item.id);
+          if (!disposed)
+            rewards.value = rewards.value.map((r) =>
+              r.id === updated.id ? updated : r,
+            );
+        } catch (e) {
+          if (!disposed) error.value = integrationError(e);
+        }
+      }
+    }
   } finally {
-    busy.value = false;
+    if (!disposed) {
+      busy.value = false;
+      scheduleRewards();
+    }
   }
 }
 async function connect() {
@@ -185,6 +250,7 @@ async function enroll() {
     busy.value ||
     !plantId.value ||
     !available.value ||
+    !matched.value ||
     !eligiblePlants.value.some((p) => p.id === plantId.value)
   )
     return;
@@ -216,6 +282,7 @@ async function claim(item: GreenReward) {
     rewards.value = rewards.value.map((r) =>
       r.id === updated.id ? updated : r,
     );
+    scheduleRewards();
   } catch (e) {
     error.value = integrationError(e);
   } finally {
@@ -247,14 +314,17 @@ function explorer(hash: string | null) {
 }
 onMounted(load);
 onBeforeUnmount(() => {
+  disposed = true;
+  generation++;
+  clearTimeout(rewardTimer);
   provider?.removeListener?.("accountsChanged", changed);
   provider?.removeListener?.("chainChanged", changed);
   provider?.removeListener?.("disconnect", changed);
 });
 </script>
 <template>
-  <div class="workspace-page">
-    <div class="ps-page-header">
+  <div class="workspace-page wallet-page">
+    <div class="ps-page-header intelligence-header">
       <div>
         <span class="eyebrow">CONSTANCIA QUE FLORECE</span>
         <h1 class="ps-page-header__title">Tus medallas verdes</h1>
@@ -270,8 +340,9 @@ onBeforeUnmount(() => {
       {{ error }}
     </p>
     <p v-if="loaded && !available && !busy" class="ps-alert">
-      La emisión de medallas todavía no está configurada. No se enviarán
-      transacciones.
+      La emisión de medallas está deshabilitada. Puedes conectar y verificar tu
+      billetera; iniciar retos y emitir medallas estará disponible cuando se
+      habiliten las recompensas.
     </p>
     <p v-if="simulated" class="ps-alert" role="status">
       Entorno IoT simulado: estos retos utilizan lecturas generadas por
@@ -294,19 +365,68 @@ onBeforeUnmount(() => {
       action="Vincular dispositivo"
       step="PASO 2 DE 3"
     />
+    <ol class="wallet-journey" aria-label="Pasos para recibir tu medalla">
+      <li :class="{ complete: walletStep > 1, active: walletStep === 1 }">
+        <span>1</span>
+        <div>
+          <strong>Conecta Rabby</strong><small>En este mismo navegador</small>
+        </div>
+      </li>
+      <li :class="{ complete: walletStep > 2, active: walletStep === 2 }">
+        <span>2</span>
+        <div>
+          <strong>Selecciona Sepolia</strong
+          ><small>Red de pruebas de Ethereum</small>
+        </div>
+      </li>
+      <li :class="{ complete: walletStep > 3, active: walletStep === 3 }">
+        <span>3</span>
+        <div>
+          <strong>Verifica tu dirección</strong
+          ><small>Una firma de texto, sin gas</small>
+        </div>
+      </li>
+      <li :class="{ active: walletStep === 4 }">
+        <span>4</span>
+        <div>
+          <strong>Cuida y gana una medalla</strong
+          ><small>30 días de lecturas válidas</small>
+        </div>
+      </li>
+    </ol>
     <div class="feature-grid">
       <section class="ps-card panel">
-        <h2>Tu billetera</h2>
+        <div class="wallet-section-heading">
+          <h2>Tu billetera</h2>
+          <span class="status-badge">{{
+            matched
+              ? "Verificada y conectada"
+              : wallet
+                ? "Dirección verificada"
+                : "Por verificar"
+          }}</span>
+        </div>
         <p class="muted">
           Conectar no equivale a verificar. La firma acredita tu dirección y no
           envía fondos.
         </p>
         <p class="form-hint">
-          Usa un navegador con la extensión Rabby habilitada, o el navegador
-          integrado de Rabby en móvil.
+          Abre PlantSync en el mismo navegador donde tienes la extensión Rabby
+          habilitada, o usa el navegador integrado de Rabby en móvil.
           <a href="https://rabby.io" target="_blank" rel="noopener noreferrer"
             >Obtener Rabby Wallet</a
           >
+        </p>
+        <p v-if="wallet && !account" class="wallet-guidance">
+          Tu dirección sigue vinculada. Conecta Rabby con esa cuenta para
+          continuar; no necesitas volver a firmar si la dirección coincide.
+        </p>
+        <p
+          v-if="account && network === '0xaa36a7' && !matched"
+          class="wallet-guidance"
+        >
+          Siguiente paso: pulsa «Firmar y verificar» y revisa el mensaje que
+          abrirá Rabby.
         </p>
         <p v-if="wallet" class="wallet-address">
           Vinculada: {{ wallet.address }}
@@ -348,6 +468,14 @@ onBeforeUnmount(() => {
       </section>
       <section class="ps-card panel">
         <h2>Comienza un reto</h2>
+        <p v-if="!matched" class="wallet-guidance">
+          Completa la conexión y verificación de tu billetera para iniciar un
+          reto.
+        </p>
+        <p v-else-if="!available" class="wallet-guidance">
+          Tu billetera está lista. Los retos estarán disponibles cuando se
+          habiliten las recompensas.
+        </p>
         <p>
           El conteo utiliza las lecturas del dispositivo desde la inscripción.
           Los huecos o valores fuera de rango interrumpen el periodo.
@@ -365,7 +493,9 @@ onBeforeUnmount(() => {
           </select></label
         ><button
           class="ps-btn ps-btn--primary"
-          :disabled="busy || !available || !plantId || !eligiblePlants.length"
+          :disabled="
+            busy || !available || !matched || !plantId || !eligiblePlants.length
+          "
           @click="enroll"
         >
           Iniciar reto de 30 días
@@ -386,7 +516,9 @@ onBeforeUnmount(() => {
         </h3>
         <p>
           {{ item.eligibleDays }} / {{ item.requiredDays }} días ·
-          {{ item.status }}
+          <span class="status-badge" :data-state="item.status">{{
+            rewardLabels[item.status] || item.status
+          }}</span>
         </p>
         <progress
           :value="item.eligibleDays"
@@ -395,7 +527,8 @@ onBeforeUnmount(() => {
         ></progress>
         <p v-if="item.status === 'SUBMITTED'">
           Transacción pendiente de confirmación. Actualiza el progreso; no es
-          necesario solicitar otra medalla.
+          necesario solicitar otra medalla. El estado se actualiza
+          automáticamente cada 15 segundos hasta completar 12 confirmaciones.
         </p>
         <p v-if="item.status === 'FAILED'">
           La emisión requiere revisión. No se creará una transacción duplicada
@@ -426,6 +559,7 @@ onBeforeUnmount(() => {
     </section>
   </div>
 </template>
+<style src="../styles/intelligence.css"></style>
 <style scoped>
 .wallet-address {
   overflow-wrap: anywhere;

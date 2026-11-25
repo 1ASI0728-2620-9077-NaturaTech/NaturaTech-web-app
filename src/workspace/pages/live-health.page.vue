@@ -15,6 +15,57 @@ const available = ref(false),
   error = ref(""),
   preview = ref("");
 const nextCursor = ref<string | null>(null);
+const fileInput = ref<HTMLInputElement>();
+const dragging = ref(false);
+const thumbnails = ref<Record<string, string>>({});
+const analysisFiles = ref<
+  Record<string, { file: File; plantId: number | null }>
+>({});
+const pollingPaused = ref(false);
+let requestVersion = 0;
+const statusNames: Record<string, string> = {
+  QUEUED: "En espera",
+  PROCESSING: "Analizando",
+  SUCCEEDED: "Análisis completado",
+  INCONCLUSIVE: "Necesitamos una foto más clara",
+  FAILED: "No se pudo analizar",
+};
+function statusName(status: string) {
+  return statusNames[status] || "Estado no disponible";
+}
+function plantName(id: number | null) {
+  return plants.value.find((p) => p.id === id)?.name || "Sin planta asociada";
+}
+function dateLabel(date: string) {
+  return new Date(date).toLocaleString("es-PE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+function choose(selected?: File) {
+  if (!available.value || busy.value || processing.value || !selected) return;
+  const invalid = validateImage(selected);
+  clear();
+  error.value = invalid || "";
+  if (invalid) return;
+  current.value = undefined;
+  clearTimeout(timer);
+  requestVersion++;
+  file.value = selected;
+  preview.value = URL.createObjectURL(selected);
+}
+function drop(event: DragEvent) {
+  dragging.value = false;
+  const files = event.dataTransfer?.files;
+  if (files && files.length > 1) {
+    error.value = "Selecciona una sola fotografía por análisis.";
+    return;
+  }
+  choose(files?.[0]);
+}
 async function history(append = false) {
   const page = await api.analyses(append ? (nextCursor.value ?? "0") : "0");
   items.value = append
@@ -47,6 +98,12 @@ const processing = computed(
     !!current.value && ["QUEUED", "PROCESSING"].includes(current.value.status),
 );
 async function retryAnalysis() {
+  const original = current.value && analysisFiles.value[current.value.id];
+  if (!original) return;
+  clear();
+  file.value = original.file;
+  plantId.value = original.plantId;
+  preview.value = URL.createObjectURL(original.file);
   renewKey();
   current.value = undefined;
   await submit();
@@ -64,13 +121,9 @@ function clear() {
   key = crypto.randomUUID();
 }
 function select(event: Event) {
-  clear();
-  const selected = (event.target as HTMLInputElement).files?.[0];
-  if (!selected) return;
-  error.value = validateImage(selected) || "";
-  if (error.value) return;
-  file.value = selected;
-  preview.value = URL.createObjectURL(selected);
+  const element = event.target as HTMLInputElement;
+  choose(element.files?.[0]);
+  element.value = "";
 }
 async function load() {
   loading.value = true;
@@ -92,15 +145,21 @@ async function load() {
 }
 async function refresh(id: string, attempt = 0) {
   clearTimeout(timer);
+  const version = ++requestVersion;
+  pollingPaused.value = false;
   try {
     const result = await api.analysis(id);
-    if (disposed) return;
+    if (disposed || version !== requestVersion) return;
     current.value = result;
-    if (["QUEUED", "PROCESSING"].includes(result.status) && attempt < 20)
+    if (["QUEUED", "PROCESSING"].includes(result.status) && attempt < 60)
       timer = setTimeout(() => void refresh(id, attempt + 1), 3000);
-    else await history();
+    else {
+      pollingPaused.value = ["QUEUED", "PROCESSING"].includes(result.status);
+      await history();
+    }
   } catch (e) {
-    if (!disposed) error.value = integrationError(e);
+    if (!disposed && version === requestVersion)
+      error.value = integrationError(e);
   }
 }
 async function submit() {
@@ -109,6 +168,9 @@ async function submit() {
   error.value = "";
   try {
     const job = await api.submitImage(file.value, plantId.value, key);
+    analysisFiles.value[job.id] = { file: file.value, plantId: plantId.value };
+    if (file.value && !thumbnails.value[job.id])
+      thumbnails.value[job.id] = URL.createObjectURL(file.value);
     await refresh(job.id);
   } catch (e) {
     error.value = integrationError(e);
@@ -121,7 +183,15 @@ async function remove(id: string) {
   busy.value = true;
   try {
     await api.deleteAnalysis(id);
-    if (current.value?.id === id) current.value = undefined;
+    delete analysisFiles.value[id];
+    if (thumbnails.value[id]) {
+      URL.revokeObjectURL(thumbnails.value[id]);
+      delete thumbnails.value[id];
+    }
+    if (current.value?.id === id) {
+      current.value = undefined;
+      clear();
+    }
     await load();
   } catch (e) {
     error.value = integrationError(e);
@@ -134,67 +204,132 @@ onBeforeUnmount(() => {
   disposed = true;
   clearTimeout(timer);
   clear();
+  Object.values(thumbnails.value).forEach((url) => URL.revokeObjectURL(url));
 });
 </script>
 <template>
-  <div class="workspace-page">
-    <div class="ps-page-header">
+  <div class="workspace-page intelligence-page health-page">
+    <header class="ps-page-header intelligence-header">
       <div>
-        <span class="eyebrow">SALUD DE PLANTAS</span>
-        <h1 class="ps-page-header__title">Conoce mejor tu planta</h1>
+        <span class="eyebrow">OBSERVA · COMPRENDE · CUIDA</span>
+        <h1 class="ps-page-header__title">Salud de plantas</h1>
         <p class="ps-page-header__subtitle">
-          Fotografías, orientación y un historial de cuidado.
+          Una fotografía, una mirada más atenta a tu jardín.
         </p>
       </div>
-      <button class="ps-btn ps-btn--outline" :disabled="loading" @click="load">
-        Actualizar
+      <button
+        class="ps-btn ps-btn--outline"
+        :disabled="loading || busy"
+        @click="load"
+      >
+        <i class="pi pi-refresh" aria-hidden="true"></i> Actualizar
       </button>
-    </div>
+    </header>
     <p v-if="error" role="alert" class="ps-alert ps-alert--error">
       {{ error }}
     </p>
-    <p v-if="loading" role="status">Consultando tu jardín…</p>
+    <p v-if="loading" class="subtle" role="status">
+      <i class="pi pi-spinner pi-spin" aria-hidden="true"></i> Consultando tu
+      jardín…
+    </p>
     <p v-else-if="capabilitiesLoaded && !available" class="ps-alert">
       El servidor todavía no tiene configurado Gemini. Tu historial sigue
       disponible.
     </p>
-    <div class="feature-grid">
-      <section class="ps-card panel">
-        <h2>Fotografía de tu planta</h2>
-        <label class="ps-input-group"
-          >Planta (opcional)<select
+    <div class="health-grid">
+      <section class="health-upload ps-card">
+        <div class="section-kicker">
+          <span class="step-dot">01</span><span>La mirada empieza aquí</span>
+        </div>
+        <h2>Muéstranos tu planta</h2>
+        <p class="subtle">
+          Busca luz natural y enfoca las hojas que te preocupan.
+        </p>
+        <label class="field-label" for="health-plant"
+          >Asociar a una planta <span class="subtle">· opcional</span></label
+        >
+        <div class="health-select">
+          <i class="pi pi-leaf" aria-hidden="true"></i
+          ><select
+            id="health-plant"
             v-model="plantId"
-            :disabled="busy"
+            :disabled="busy || processing"
             @change="renewKey"
           >
-            <option :value="null">Sin asociar</option>
+            <option :value="null">Selecciona una planta de tu jardín</option>
             <option v-for="p in plants" :key="p.id" :value="p.id">
               {{ p.name }}
             </option>
-          </select></label
+          </select>
+        </div>
+        <label
+          class="photo-dropzone"
+          :class="{
+            'is-dragging': dragging,
+            'has-preview': preview,
+            'is-disabled': !available || busy || processing,
+          }"
+          tabindex="0"
+          role="button"
+          aria-label="Seleccionar fotografía de tu planta"
+          :aria-disabled="!available || busy || processing"
+          @keydown.enter.prevent="fileInput?.click()"
+          @keydown.space.prevent="fileInput?.click()"
+          @dragover.prevent="dragging = true"
+          @dragleave.prevent="dragging = false"
+          @drop.prevent="drop"
         >
-        <label class="ps-input-group"
-          >Selecciona una fotografía<input
+          <input
+            ref="fileInput"
+            class="sr-only"
+            tabindex="-1"
             type="file"
             accept="image/png,image/jpeg,image/webp"
             :disabled="!available || busy || processing"
             @change="select"
-        /></label>
-        <p class="muted">
-          JPG, PNG o WebP · Máximo 10 MB. Las fotos se procesan con Gemini.
-        </p>
-        <img
-          v-if="preview"
-          :src="preview"
-          alt="Vista previa de tu planta"
-          style="max-width: 100%; max-height: 280px; object-fit: contain"
-        />
+          />
+          <img
+            v-if="preview"
+            :src="preview"
+            alt="Vista previa de tu planta"
+            class="upload-preview"
+          /><span v-if="preview" class="change-photo"
+            ><i class="pi pi-camera" aria-hidden="true"></i> Cambiar
+            fotografía</span
+          >
+          <template v-else
+            ><span class="upload-emblem"
+              ><i class="pi pi-camera" aria-hidden="true"></i></span
+            ><strong>Arrastra tu fotografía aquí</strong
+            ><span>o <span class="text-link">elige un archivo</span></span
+            ><small>JPG, PNG o WebP · Hasta 10 MB</small></template
+          >
+        </label>
+        <div v-if="file" class="file-summary">
+          <i class="pi pi-image" aria-hidden="true"></i
+          ><span>{{ file.name }}</span
+          ><small>{{ (file.size / 1024 / 1024).toFixed(1) }} MB</small
+          ><button
+            class="icon-button"
+            aria-label="Quitar fotografía seleccionada"
+            :disabled="busy || processing"
+            @click="clear"
+          >
+            <i class="pi pi-times" aria-hidden="true"></i>
+          </button>
+        </div>
         <button
-          class="ps-btn ps-btn--primary"
+          class="ps-btn ps-btn--primary analyze-button"
           :disabled="!file || busy || !available || processing"
           @click="submit"
         >
-          {{
+          <i
+            :class="
+              busy || processing ? 'pi pi-spinner pi-spin' : 'pi pi-sparkles'
+            "
+            aria-hidden="true"
+          ></i
+          >{{
             busy
               ? "Enviando…"
               : processing
@@ -202,95 +337,211 @@ onBeforeUnmount(() => {
                 : "Analizar fotografía"
           }}
         </button>
+        <p class="privacy-note">
+          <i class="pi pi-lock" aria-hidden="true"></i> La imagen se envía a
+          Gemini para su análisis. El servidor elimina la foto al finalizar el
+          procesamiento.
+        </p>
       </section>
-      <section class="ps-card panel" aria-live="polite">
-        <h2>Resultado</h2>
+      <section
+        class="diagnosis-card ps-card"
+        aria-live="polite"
+        :aria-busy="processing"
+      >
+        <div class="section-kicker">
+          <span class="step-dot">02</span
+          ><span>Una guía para el siguiente cuidado</span>
+        </div>
+        <h2>Resultado del análisis</h2>
         <template v-if="current"
-          ><p class="soft-tag">{{ current.status }}</p>
-          <p v-if="['QUEUED', 'PROCESSING'].includes(current.status)">
-            Tu fotografía está en proceso. Puedes consultar el estado sin
-            enviarla otra vez.
+          ><div class="diagnosis-status" :data-state="current.status">
+            <span class="status-badge" :data-state="current.status"
+              ><i
+                :class="
+                  processing
+                    ? 'pi pi-spinner pi-spin'
+                    : current.status === 'SUCCEEDED'
+                      ? 'pi pi-check-circle'
+                      : current.status === 'FAILED'
+                        ? 'pi pi-exclamation-circle'
+                        : 'pi pi-eye'
+                "
+                aria-hidden="true"
+              ></i
+              >{{ statusName(current.status) }}</span
+            >
+          </div>
+          <img
+            v-if="thumbnails[current.id]"
+            :src="thumbnails[current.id]"
+            alt="Fotografía de este análisis"
+            class="result-photo"
+          />
+          <p class="subtle">
+            {{ plantName(current.plantId) }} ·
+            {{ dateLabel(current.createdAt) }}
           </p>
-          <p v-if="current.status === 'FAILED'">
-            {{
-              integrationError({
-                response: { status: 502, data: { code: current.errorCode } },
-              })
-            }}
-          </p>
-          <button
-            v-if="current.status === 'FAILED' && file"
-            class="ps-btn ps-btn--primary"
-            :disabled="busy"
-            @click="retryAnalysis"
+          <div v-if="processing" class="processing-state">
+            <div class="scan-emblem">
+              <i class="pi pi-leaf" aria-hidden="true"></i>
+            </div>
+            <h3>Estamos observando los detalles</h3>
+            <p>
+              El análisis continúa en el servidor. Puedes consultar su estado
+              sin enviar otra vez la fotografía.
+            </p>
+            <p v-if="pollingPaused" role="status">
+              Está tardando más de lo esperado. Pulsa «Consultar estado» para
+              continuar.
+            </p>
+          </div>
+          <div v-else-if="current.status === 'FAILED'" class="result-callout">
+            <h3>Podemos volver a intentarlo</h3>
+            <p>
+              {{
+                integrationError({
+                  response: { status: 502, data: { code: current.errorCode } },
+                })
+              }}
+            </p>
+            <button
+              v-if="file && thumbnails[current.id]"
+              class="ps-btn ps-btn--outline"
+              :disabled="busy"
+              @click="retryAnalysis"
+            >
+              Reintentar esta fotografía
+            </button>
+          </div>
+          <template v-else
+            ><h3 class="diagnosis-species">
+              {{
+                current.species ||
+                (current.status === "INCONCLUSIVE"
+                  ? "Hace falta otra mirada"
+                  : "Lo que observamos")
+              }}
+            </h3>
+            <p class="diagnosis-summary">{{ current.summary }}</p>
+            <div v-if="current.observations.length" class="result-section">
+              <h4>
+                <i class="pi pi-eye" aria-hidden="true"></i> Observaciones
+              </h4>
+              <ul>
+                <li v-for="text in current.observations" :key="text">
+                  {{ text }}
+                </li>
+              </ul>
+            </div>
+            <div
+              v-if="current.recommendations.length"
+              class="result-section recommendations"
+            >
+              <h4>
+                <i class="pi pi-leaf" aria-hidden="true"></i> Próximos cuidados
+              </h4>
+              <ol>
+                <li v-for="text in current.recommendations" :key="text">
+                  {{ text }}
+                </li>
+              </ol>
+            </div></template
           >
-            Reintentar esta fotografía
+          <button
+            class="ps-btn ps-btn--outline result-refresh"
+            :disabled="busy"
+            @click="refresh(current.id)"
+          >
+            <i class="pi pi-refresh" aria-hidden="true"></i> Consultar estado
           </button>
-          <h3 v-if="current.species">{{ current.species }}</h3>
-          <p>{{ current.summary }}</p>
-          <ul>
-            <li v-for="text in current.observations" :key="text">{{ text }}</li>
-          </ul>
-          <ul>
-            <li v-for="text in current.recommendations" :key="text">
-              {{ text }}
-            </li>
-          </ul>
-          <button class="ps-btn ps-btn--outline" @click="refresh(current.id)">
-            Consultar estado
-          </button></template
-        >
-        <p v-else class="muted">Selecciona una foto o un análisis anterior.</p>
-        <p class="muted">
-          La orientación puede ser inconclusa; no garantiza un diagnóstico.
+        </template>
+        <div v-else class="diagnosis-empty">
+          <span class="empty-illustration"
+            ><i class="pi pi-leaf" aria-hidden="true"></i
+            ><i class="pi pi-search" aria-hidden="true"></i
+          ></span>
+          <h3>Cada hoja tiene algo que contar</h3>
+          <p>
+            Sube una fotografía para descubrir observaciones y recomendaciones,
+            o abre un análisis de tu historial.
+          </p>
+          <span class="status-badge">A la espera de tu fotografía</span>
+        </div>
+        <p class="diagnosis-footnote">
+          <i class="pi pi-info-circle" aria-hidden="true"></i> La orientación
+          puede ser inconclusa y no garantiza un diagnóstico.
         </p>
       </section>
     </div>
-    <section class="ps-card panel">
-      <h2>Historial</h2>
+    <section class="health-history ps-card">
+      <div class="history-heading">
+        <div>
+          <span class="eyebrow">EL CAMINO DE TU JARDÍN</span>
+          <h2>
+            Historial de análisis
+            <span class="count-chip">{{ items.length }}</span>
+          </h2>
+        </div>
+        <span class="subtle">Tus observaciones, en un solo lugar</span>
+      </div>
+      <div v-if="!items.length && !loading" class="history-empty">
+        <i class="pi pi-images" aria-hidden="true"></i>
+        <p>Tu primera fotografía inicia esta historia.</p>
+      </div>
+      <article
+        v-for="item in items"
+        :key="item.id"
+        class="analysis-record"
+        :class="{ 'is-selected': current?.id === item.id }"
+      >
+        <div class="history-thumbnail">
+          <img v-if="thumbnails[item.id]" :src="thumbnails[item.id]" alt="" /><i
+            v-else
+            class="pi pi-leaf"
+            aria-hidden="true"
+          ></i>
+        </div>
+        <div class="record-detail">
+          <strong>{{ item.species || plantName(item.plantId) }}</strong
+          ><span
+            >{{ dateLabel(item.createdAt) }} ·
+            {{ plantName(item.plantId) }}</span
+          >
+        </div>
+        <span class="status-badge" :data-state="item.status">{{
+          statusName(item.status)
+        }}</span>
+        <div class="record-actions">
+          <button
+            class="ps-btn ps-btn--outline"
+            :disabled="busy"
+            @click="refresh(item.id)"
+          >
+            Ver resultado</button
+          ><button
+            class="icon-button"
+            :disabled="busy || ['QUEUED', 'PROCESSING'].includes(item.status)"
+            :aria-label="'Eliminar análisis del ' + dateLabel(item.createdAt)"
+            title="Eliminar análisis"
+            @click="remove(item.id)"
+          >
+            <i class="pi pi-trash" aria-hidden="true"></i>
+          </button>
+        </div>
+      </article>
+      <p v-if="items.length" class="history-note">
+        Las miniaturas están disponibles para las fotos que subas durante esta
+        sesión. Las fotografías originales no se conservan en el historial.
+      </p>
       <button
         v-if="nextCursor"
-        class="ps-btn ps-btn--outline"
+        class="ps-btn ps-btn--outline load-more"
         :disabled="busy"
         @click="more"
       >
         Cargar anteriores
       </button>
-      <p v-if="!items.length && !loading">Todavía no tienes análisis.</p>
-      <div v-for="item in items" :key="item.id" class="live-row">
-        <span
-          >{{ new Date(item.createdAt).toLocaleString() }} ·
-          {{ item.status }}</span
-        >
-        <div>
-          <button class="ps-btn ps-btn--outline" @click="refresh(item.id)">
-            Ver resultado
-          </button>
-          <button
-            class="ps-btn ps-btn--outline"
-            :disabled="busy || ['QUEUED', 'PROCESSING'].includes(item.status)"
-            @click="remove(item.id)"
-          >
-            Eliminar
-          </button>
-        </div>
-      </div>
     </section>
   </div>
 </template>
-<style scoped>
-.live-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-  padding: 1rem 0;
-  border-bottom: 1px solid var(--ps-border);
-}
-select {
-  padding: 0.7rem;
-  background: var(--ps-surface);
-  color: var(--ps-text);
-  max-width: 100%;
-}
-</style>
+<style src="../styles/intelligence.css"></style>

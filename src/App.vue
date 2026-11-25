@@ -259,7 +259,7 @@ watch(
           class="ps-sidebar__link"
           ><i class="pi pi-users" aria-hidden="true"></i>
           Administración</router-link
-        ><router-link v-if="!demo" to="/chatbot" class="ps-sidebar__link"
+        ><router-link v-if="!demo" to="/assistant" class="ps-sidebar__link"
           ><i class="pi pi-comments" aria-hidden="true"></i> Chat
           actual</router-link
         ><router-link v-if="!demo" to="/profile" class="ps-sidebar__link"

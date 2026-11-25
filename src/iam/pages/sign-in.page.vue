@@ -197,12 +197,6 @@ async function onSubmit() {
           ¿Aún no tienes cuenta?
           <router-link to="/sign-up">Crear cuenta</router-link>
         </p>
-        <p class="ps-auth-card__footer">
-          <router-link to="/preview/dashboard"
-            >Explorar el nuevo PlantSync sin iniciar sesión
-            <i class="pi pi-arrow-right" aria-hidden="true"></i
-          ></router-link>
-        </p>
       </form>
     </div>
   </div>

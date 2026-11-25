@@ -35,7 +35,7 @@ export async function getRabby(): Promise<WalletProvider> {
       window.removeEventListener("eip6963:announceProvider", announce);
       reject(
         new Error(
-          "Instala o habilita Rabby Wallet desde rabby.io y vuelve a conectar.",
+          "Rabby Wallet no está disponible en este navegador. Abre PlantSync en el mismo navegador donde tienes Rabby instalado y habilitado, y vuelve a conectar.",
         ),
       );
     }, 500);

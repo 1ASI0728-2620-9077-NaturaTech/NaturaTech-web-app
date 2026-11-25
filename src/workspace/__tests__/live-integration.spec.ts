@@ -79,6 +79,194 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Real integration views", () => {
+  it("preserves general context when the conversation is refreshed", async () => {
+    api.createConversation.mockResolvedValue({ id: "general" });
+    api.message.mockResolvedValue({
+      reply: "Orientación general",
+      proposal: null,
+    });
+    api.conversation.mockResolvedValue({ messages: [] });
+    const wrapper = mount(Assistant);
+    await flushPromises();
+    const select = wrapper.get("select");
+    (select.element as HTMLSelectElement).selectedIndex = 0;
+    await select.trigger("change");
+    await wrapper
+      .get('button[aria-label="Actualizar conversación y comandos"]')
+      .trigger("click");
+    await flushPromises();
+    await wrapper.get("textarea").setValue("Una consulta general");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(api.message).toHaveBeenCalledWith(
+      "general",
+      "Una consulta general",
+      null,
+    );
+  });
+  it("does not send confirmation for an expired proposal", async () => {
+    sessionStorage.setItem("plantsync:conversation:1", "conversation");
+    api.conversation.mockResolvedValue({
+      messages: [
+        {
+          role: "assistant",
+          content: "Propuesta anterior",
+          proposalId: "expired",
+        },
+      ],
+    });
+    api.proposal.mockResolvedValue({
+      id: "expired",
+      plantId: 1,
+      actuator: "GROW_LIGHT",
+      durationSeconds: 1,
+      status: "AWAITING_CONFIRMATION",
+      expiresAt: "2000-01-01T00:00:00Z",
+    });
+    const wrapper = mount(Assistant);
+    await flushPromises();
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Confirmar acción")!
+      .trigger("click");
+    await flushPromises();
+    expect(api.confirm).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("La propuesta venció");
+  });
+  it("retries the original analysis photo rather than a newer selected file", async () => {
+    const result = {
+      id: "job",
+      plantId: null,
+      status: "FAILED",
+      species: null,
+      summary: null,
+      observations: [],
+      recommendations: [],
+      errorCode: "GEMINI_UNAVAILABLE",
+      createdAt: "2026-11-24T12:00:00Z",
+    };
+    api.submitImage.mockResolvedValue({ id: "job", status: "QUEUED" });
+    api.analysis.mockResolvedValue(result);
+    api.analyses.mockResolvedValue({ items: [result], nextCursor: null });
+    const wrapper = mount(Health);
+    await flushPromises();
+    const original = new File(["original"], "original.png", {
+      type: "image/png",
+    });
+    await wrapper
+      .get(".photo-dropzone")
+      .trigger("drop", { dataTransfer: { files: [original] } });
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Analizar fotografía")!
+      .trigger("click");
+    await flushPromises();
+    const oldKey = api.submitImage.mock.calls[0][2];
+    const newer = new File(["newer"], "newer.png", { type: "image/png" });
+    await wrapper
+      .get(".photo-dropzone")
+      .trigger("drop", { dataTransfer: { files: [newer] } });
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Ver resultado")!
+      .trigger("click");
+    await flushPromises();
+    await wrapper
+      .findAll("button")
+      .find((b) => b.text() === "Reintentar esta fotografía")!
+      .trigger("click");
+    await flushPromises();
+    expect(api.submitImage).toHaveBeenLastCalledWith(
+      original,
+      null,
+      expect.any(String),
+    );
+    expect(api.submitImage.mock.calls[1][2]).not.toBe(oldKey);
+  });
+  it("keeps the received answer if refreshing conversation history fails", async () => {
+    api.createConversation.mockResolvedValue({ id: "conversation" });
+    api.message.mockResolvedValue({
+      reply: "Respuesta recibida del servidor",
+      proposal: null,
+    });
+    api.conversation.mockRejectedValue(new Error("history offline"));
+    const wrapper = mount(Assistant);
+    await flushPromises();
+    await wrapper.get("textarea").setValue("Revisa mi planta");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(api.message).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Respuesta recibida del servidor");
+    expect((wrapper.get("textarea").element as HTMLTextAreaElement).value).toBe(
+      "",
+    );
+  });
+  it("accepts a dropped photograph and rejects invalid files without sending them", async () => {
+    const wrapper = mount(Health);
+    await flushPromises();
+    const zone = wrapper.get(".photo-dropzone");
+    await zone.trigger("drop", {
+      dataTransfer: {
+        files: [new File(["text"], "notes.txt", { type: "text/plain" })],
+      },
+    });
+    expect(wrapper.get('[role="alert"]').text()).toContain("JPG");
+    expect(api.submitImage).not.toHaveBeenCalled();
+    await zone.trigger("drop", {
+      dataTransfer: {
+        files: [new File(["image"], "plant.webp", { type: "image/webp" })],
+      },
+    });
+    expect(
+      wrapper.get('img[alt="Vista previa de tu planta"]').attributes("src"),
+    ).toBe("blob:test");
+    expect(wrapper.text()).toContain("plant.webp");
+    expect(api.submitImage).not.toHaveBeenCalled();
+  });
+  it("keeps wallet connection available when the garden cannot be loaded", async () => {
+    loadPlants.mockRejectedValue(new Error("garden offline"));
+    api.wallet.mockResolvedValue({
+      address: "0x" + "1".repeat(40),
+      chainId: 11155111,
+    });
+    const wrapper = mount(Rewards);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Dirección verificada");
+    expect(
+      wrapper
+        .findAll("button")
+        .find((b) => b.text() === "Conectar Rabby Wallet")!
+        .attributes("disabled"),
+    ).toBeUndefined();
+    expect(api.challenge).not.toHaveBeenCalled();
+  });
+  it("polls a submitted reward until it is confirmed without sending another claim", async () => {
+    vi.useFakeTimers();
+    const pending = {
+      id: "reward",
+      plantId: 1,
+      status: "SUBMITTED",
+      eligibleDays: 30,
+      requiredDays: 30,
+      startedAt: "2026-01-01",
+      transactionHash: null,
+    };
+    api.rewards.mockResolvedValue({ items: [pending], nextCursor: null });
+    api.reward
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValue({ ...pending, status: "CONFIRMED" });
+    const wrapper = mount(Rewards);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Confirmando en Sepolia");
+    await vi.advanceTimersByTimeAsync(15000);
+    await flushPromises();
+    expect(wrapper.text()).toContain("Medalla emitida");
+    expect(api.claim).not.toHaveBeenCalled();
+    wrapper.unmount();
+    const calls = api.reward.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(api.reward).toHaveBeenCalledTimes(calls);
+  });
   it("recovers a conversation removed from the backend", async () => {
     sessionStorage.setItem("plantsync:conversation:1", "removed");
     api.conversation.mockRejectedValue({ response: { status: 404 } });
@@ -224,57 +412,73 @@ describe("Real integration views", () => {
       .trigger("click");
     await flushPromises();
     expect(api.confirm).toHaveBeenCalledTimes(1);
-    expect(wrapper.text()).toContain("QUEUED");
+    expect(wrapper.text()).toContain("En cola");
   });
-  it("requests a wallet signature explicitly and invalidates the connected account on change", async () => {
-    const address = "0x" + "1".repeat(40);
-    let changed: () => void = () => {};
-    const request = vi.fn(async ({ method }: { method: string }) =>
-      method === "eth_chainId"
-        ? "0xaa36a7"
-        : method === "personal_sign"
-          ? "0x" + "a".repeat(130)
-          : [address],
-    );
-    vi.stubGlobal("ethereum", {
-      isRabby: true,
-      request,
-      on: (event: string, callback: () => void) => {
-        if (event === "accountsChanged") changed = callback;
-      },
-      removeListener: vi.fn(),
-    });
-    api.challenge.mockResolvedValue({
-      challengeId: "challenge",
-      message: "Verify account",
-    });
-    api.verifyWallet.mockResolvedValue({
-      address,
-      chainId: 11155111,
-      verifiedAt: "2026-11-10",
-    });
-    const wrapper = mount(Rewards);
-    await flushPromises();
-    expect(request).not.toHaveBeenCalled();
-    await wrapper
-      .findAll("button")
-      .find((b) => b.text() === "Conectar Rabby Wallet")!
-      .trigger("click");
-    await flushPromises();
-    expect(api.challenge).not.toHaveBeenCalled();
-    await wrapper
-      .findAll("button")
-      .find((b) => b.text() === "Firmar y verificar")!
-      .trigger("click");
-    await flushPromises();
-    expect(api.verifyWallet).toHaveBeenCalledWith(
-      "challenge",
-      "0x" + "a".repeat(130),
-    );
-    expect(wrapper.text()).toContain("Cuenta verificada");
-    changed();
-    await flushPromises();
-    expect(wrapper.text()).not.toContain("Cuenta verificada");
-    expect(api.claim).not.toHaveBeenCalled();
-  });
+  it.each([true, false])(
+    "requests a wallet signature and invalidates account changes with rewards enabled=%s",
+    async (rewardsEnabled) => {
+      api.capabilities.mockResolvedValue({
+        rewards: rewardsEnabled,
+        iotEnvironment: "SIMULATED",
+      });
+      const address = "0x" + "1".repeat(40);
+      let changed: () => void = () => {};
+      const request = vi.fn(async ({ method }: { method: string }) =>
+        method === "eth_chainId"
+          ? "0xaa36a7"
+          : method === "personal_sign"
+            ? "0x" + "a".repeat(130)
+            : [address],
+      );
+      vi.stubGlobal("ethereum", {
+        isRabby: true,
+        request,
+        on: (event: string, callback: () => void) => {
+          if (event === "accountsChanged") changed = callback;
+        },
+        removeListener: vi.fn(),
+      });
+      api.challenge.mockResolvedValue({
+        challengeId: "challenge",
+        message: "Verify account",
+      });
+      api.verifyWallet.mockResolvedValue({
+        address,
+        chainId: 11155111,
+        verifiedAt: "2026-11-10",
+      });
+      const wrapper = mount(Rewards);
+      await flushPromises();
+      expect(request).not.toHaveBeenCalled();
+      await wrapper
+        .findAll("button")
+        .find((b) => b.text() === "Conectar Rabby Wallet")!
+        .trigger("click");
+      await flushPromises();
+      expect(api.challenge).not.toHaveBeenCalled();
+      await wrapper
+        .findAll("button")
+        .find((b) => b.text() === "Firmar y verificar")!
+        .trigger("click");
+      await flushPromises();
+      expect(api.verifyWallet).toHaveBeenCalledWith(
+        "challenge",
+        "0x" + "a".repeat(130),
+      );
+      expect(wrapper.text()).toContain("Cuenta verificada");
+      if (!rewardsEnabled) {
+        expect(wrapper.text()).toContain("Puedes conectar y verificar");
+        expect(
+          wrapper
+            .findAll("button")
+            .find((b) => b.text().includes("Iniciar reto"))!
+            .attributes("disabled"),
+        ).toBeDefined();
+      }
+      changed();
+      await flushPromises();
+      expect(wrapper.text()).not.toContain("Cuenta verificada");
+      expect(api.claim).not.toHaveBeenCalled();
+    },
+  );
 });

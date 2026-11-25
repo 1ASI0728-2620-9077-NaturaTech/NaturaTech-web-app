@@ -1,4 +1,4 @@
-/** Proposed v1 backend DTOs. The current demo never sends these to a live endpoint. */
+/** DTOs shared by the live integrations and the explicitly isolated preview. */
 export interface PlantAnalysisResult {
   id: string;
   status: "QUEUED" | "PROCESSING" | "SUCCEEDED" | "INCONCLUSIVE" | "FAILED";

@@ -186,6 +186,19 @@ Las pruebas de componentes no sustituyen la revisión visual, una firma con la e
 
 ## Despliegue en Netlify
 
+### Integración y revisión del rediseño
+
+- Asistente utiliza conversaciones reales, conserva una respuesta recibida si falla la recarga del historial y exige confirmación para las acciones. El compositor está al pie del panel; los mensajes y estados del dispositivo se actualizan sin sustituirlos por datos de ejemplo. `/chatbot` redirige a `/assistant`.
+- Salud admite selección por teclado y arrastrar y soltar, vista previa, resultados con estados traducidos y un historial escaneable. Las miniaturas solo viven durante la sesión: el backend no conserva las fotografías originales. Un reintento reutiliza la fotografía y planta del análisis correspondiente.
+- Billetera guía por conexión, Sepolia, firma y reto. La verificación no depende de habilitar la emisión. Los cambios de cuenta invalidan el estado conectado y las recompensas enviadas se consultan cada 15 segundos sin repetir solicitudes de emisión.
+- Se eliminó el acceso «Explorar el nuevo PlantSync sin iniciar sesión» del formulario principal. Las rutas de preview permanecen aisladas y explícitamente identificadas.
+
+`npm run check:api` compara los puntos de llamada HTTP con el OpenAPI publicado, sin credenciales ni cambios de datos. La revisión actual encontró 63 coincidencias de rutas y métodos; no reemplaza pruebas de autorización, DTOs ni proveedores.
+
+Verificación del cambio: 107 pruebas de frontend aprobadas, TypeScript y compilación correctos. Se comprobaron también login, perfil, plantas, dispositivos, capacidades, historial y billetera mediante el proxy Vite contra el backend publicado, con consultas de lectura autenticadas. La revisión visual en Windows se interrumpió porque la herramienta no pudo verificar la URL de la ventana; queda pendiente revisar escritorio y móvil en el navegador antes de publicar.
+
+La auditoría detectó además un error del backend al editar plantas con fecha de próximo riego vacía. Su parser se corrigió por separado y pasó cinco pruebas de fechas. Ese ajuste requiere un despliegue del backend; no se soluciona inventando una fecha desde el frontend.
+
 La configuración está versionada en [netlify.toml](netlify.toml):
 
 - Node.js 22 y comando `npm run type-check && npm test && npm run build`.
