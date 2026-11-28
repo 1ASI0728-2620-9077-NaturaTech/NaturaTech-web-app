@@ -29,6 +29,7 @@ const section = computed(() =>
   demo.value ? String(route.params.section || "dashboard") : String(route.name),
 );
 const items = [
+  { label: "Mi espacio", icon: "pi pi-home", section: "my-space", path: "/my-space" },
   {
     label: "Vista general",
     icon: "pi pi-th-large",
@@ -76,12 +77,12 @@ const items = [
   },
 ];
 const homePath = computed(() =>
-  auth.userRole === "admin" ? "/dashboard" : "/plants",
+  auth.userRole === "admin" ? "/dashboard" : "/my-space",
 );
 const visibleItems = computed(() =>
   items.filter(
     (item) =>
-      demo.value || auth.userRole === "admin" || item.section !== "dashboard",
+      demo.value ? item.section !== "my-space" : auth.userRole === "admin" || item.section !== "dashboard",
   ),
 );
 function active(key: string) {
@@ -295,12 +296,7 @@ watch(
         ><strong>{{ pageTitle }}</strong>
       </div>
       <div class="ps-header__user">
-        <router-link
-          v-if="!demo"
-          to="/preview/dashboard"
-          class="text-link preview-link"
-          >Explorar novedades</router-link
-        ><span class="ps-header__name">{{
+        <span class="ps-header__name">{{
           demo ? "Mi jardín de ejemplo" : profileName || auth.email
         }}</span>
         <div class="ps-header__avatar" aria-hidden="true">

@@ -6,6 +6,7 @@ import {
 } from "vue-router";
 
 const routes: RouteRecordRaw[] = [
+  { path: "/my-space", name: "my-space", component: () => import("@/workspace/pages/my-space.page.vue"), meta: { requiresAuth: true, minimumRole: "user" } },
   {
     path: "/preview",
     redirect: "/preview/dashboard",

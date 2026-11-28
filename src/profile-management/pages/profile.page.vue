@@ -138,7 +138,7 @@ async function selectPlan(plan: "BASIC" | "PRO") {
     <!-- Page header -->
     <div class="ps-page-header">
       <div>
-        <h1 class="ps-page-header__title">Perfil</h1>
+        <h1 class="ps-page-header__title">Mi perfil</h1>
         <p class="ps-page-header__subtitle">
           Administra tu cuenta y suscripción
         </p>
@@ -247,13 +247,18 @@ async function selectPlan(plan: "BASIC" | "PRO") {
         {{ error }}
       </div>
 
+      <section class="profile-cover">
+        <div class="profile-cover__identity"><div class="cover-avatar">{{ getInitial() }}</div><div><span class="eyebrow">MIEMBRO DE PLANTSYNC</span><h2>{{ profile.personName }}</h2><p>{{ authStore.email }}</p></div></div>
+        <router-link to="/my-space" class="ps-btn ps-btn--outline">Ir a mi espacio <i class="pi pi-arrow-up-right" aria-hidden="true"></i></router-link>
+      </section>
       <div class="profile-grid">
         <!-- Profile Card -->
         <div class="ps-card ps-profile-card">
-          <div class="ps-profile-avatar">{{ getInitial() }}</div>
+          <span class="eyebrow">INFORMACIÓN PERSONAL</span>
 
           <template v-if="!editMode">
-            <h2 class="profile-name">{{ profile.personName }}</h2>
+            <h2 class="profile-name">Datos de tu cuenta</h2>
+            <p class="profile-display-name">{{ profile.personName }}</p>
             <p class="profile-email">{{ authStore.email }}</p>
             <span class="ps-header__badge" style="margin-bottom: 1.5rem">{{
               profile.subscriptionPlan
@@ -371,6 +376,19 @@ async function selectPlan(plan: "BASIC" | "PRO") {
 </template>
 
 <style scoped>
+.profile-page { max-width:1200px; margin:auto; }
+.profile-cover { border-radius:24px; padding:clamp(1.5rem,4vw,3rem); background:var(--ps-gradient-1); display:flex; align-items:center; justify-content:space-between; gap:2rem; margin-bottom:2rem; }
+.profile-cover__identity { display:flex; align-items:center; gap:1.5rem; min-width:0; }
+.profile-cover h2 { font-size:clamp(1.6rem,3vw,2.4rem); letter-spacing:-.04em; margin:.5rem 0; }
+.profile-cover p { overflow-wrap:anywhere; margin:0; }
+.cover-avatar { width:80px; height:80px; border-radius:24px; background:var(--ps-card); color:var(--ps-primary); display:grid; place-items:center; font-size:2rem; flex-shrink:0; box-shadow:0 8px 30px #0000000a; }
+.ps-profile-card { text-align:left; padding:2rem; border-radius:20px; }
+.ps-profile-card .eyebrow { display:block; margin-bottom:1.5rem; }
+.profile-display-name { margin-top:1.5rem; font-size:1.2rem; }
+.subscription-description { color:var(--ps-text-secondary); margin-bottom:1.5rem; line-height:1.7; }
+.ps-plan-card { border-radius:20px; }
+@media(max-width:650px) { .profile-cover { align-items:flex-start; flex-direction:column; } .profile-cover__identity { flex-wrap:wrap; } }
+
 .profile-grid {
   display: grid;
   grid-template-columns: 320px 1fr;

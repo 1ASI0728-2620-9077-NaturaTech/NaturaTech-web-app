@@ -217,3 +217,29 @@ Configura `VITE_API_BASE_URL` con la URL completa de la API y despliega. En el b
 Un espacio para cuidar lo que crece.
 
 </div>
+
+
+## Uso propuesto de n8n 
+
+**Estado: propuesta justificada; no implementada.**
+
+PlantSync usaría n8n para coordinar alertas y recordatorios de cuidado. El backend seguiría siendo responsable de autorizar accesos, interpretar umbrales y guardar tareas; n8n conectaría esos eventos con los canales de notificación elegidos por cada usuario.
+
+### Proceso propuesto
+
+1. Un disparador programado consulta al backend por cuidados vencidos o alertas persistentes de humedad y luz. Como alternativa, el backend publica un evento mediante un webhook autenticado.
+2. El flujo valida la antigüedad de las lecturas, la especie, los umbrales configurados y las preferencias de notificación. Si faltan datos, propone revisar la planta en lugar de recomendar riego.
+3. Un nodo condicional distingue un recordatorio existente de una nueva necesidad. Se usa una clave de deduplicación por planta, tipo de alerta y periodo para evitar tareas y mensajes repetidos.
+4. Cuando corresponde, el flujo solicita al backend una propuesta de cuidado. El usuario revisa la planta, la acción, la fecha y el motivo antes de confirmar la creación de una tarea mediante la API existente.
+5. Con autorización del usuario, n8n envía un resumen por el canal habilitado y registra entrega, errores y reintentos limitados. No acciona la bomba ni emite medallas.
+
+### Justificación
+
+Este proceso conecta sensores, planificación y comunicación sin mezclar la lógica de notificaciones con las pantallas. n8n permite visualizar decisiones, controlar reintentos y adaptar canales. Para un cactus, una humedad baja aislada no basta para ordenar riego: deben considerarse especie, sustrato, lecturas recientes y umbrales. El flujo ayuda a recordar y revisar el cuidado sin asumir que una alerta equivale a una necesidad de agua.
+
+### Alcance y validación futura
+
+Se necesitarían credenciales de servicio limitadas, autenticación del webhook, consentimiento para notificaciones y registro de ejecuciones. Se validaría que una alerta repetida no duplique tareas, que una lectura antigua no provoque una recomendación automática y que cada usuario solo reciba información de sus plantas. No se incluyen credenciales ni un flujo desplegado en esta entrega.
+
+El selector español/inglés pertenece a la internacionalización de la interfaz y no requiere n8n. Una futura traducción de resúmenes enviados por correo podría formar parte del flujo, pero no sería su justificación principal.
+

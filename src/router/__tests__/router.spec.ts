@@ -43,7 +43,7 @@ describe("Navigation contracts", () => {
     getRoles.mockReset().mockResolvedValue(["ROLE_ADMIN"]);
     await router.push("/missing-test-page");
   });
-  it.each(["/dashboard", "/plants", "/health", "/assistant", "/rewards"])(
+  it.each(["/my-space", "/dashboard", "/plants", "/health", "/assistant", "/rewards"])(
     "requires a session for %s",
     async (path) => {
       await router.push(path);

@@ -33,6 +33,7 @@ async function renderShell() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/my-space", component: { template: "<div>My space</div>" } },
       { path: "/plants", component: { template: "<div>Plants</div>" } },
       { path: "/sign-in", component: { template: "<div>Sign in</div>" } },
       { path: "/dashboard", component: { template: "<div>Dashboard</div>" } },

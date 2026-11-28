@@ -339,16 +339,15 @@ onBeforeUnmount(() => {
     <p v-if="error" role="alert" class="ps-alert ps-alert--error">
       {{ error }}
     </p>
-    <p v-if="loaded && !available && !busy" class="ps-alert">
-      La emisión de medallas está deshabilitada. Puedes conectar y verificar tu
-      billetera; iniciar retos y emitir medallas estará disponible cuando se
-      habiliten las recompensas.
-    </p>
-    <p v-if="simulated" class="ps-alert" role="status">
-      Entorno IoT simulado: estos retos utilizan lecturas generadas por
-      software. Las medallas en Sepolia son de prueba y no acreditan cuidado
-      físico.
-    </p>
+    <div class="reward-context" role="status">
+      <span v-if="loaded && !busy" class="status-badge">{{ available ? 'Retos disponibles' : 'Retos en preparación' }}</span>
+      <span>Ethereum Sepolia · Red de pruebas</span>
+      <details v-if="simulated || (loaded && !available && !busy)">
+        <summary>Acerca de este programa</summary>
+        <p v-if="loaded && !available">Puedes conectar y verificar tu billetera. La inscripción y emisión estarán disponibles cuando el servidor habilite el programa.</p>
+        <p v-if="simulated">Las lecturas IoT son simuladas. Las medallas son de prueba y no acreditan cuidado físico.</p>
+      </details>
+    </div>
     <OnboardingCard
       v-if="loaded && !plants.length"
       title="Una medalla empieza con una planta"
@@ -504,9 +503,12 @@ onBeforeUnmount(() => {
     </div>
     <section class="ps-card panel">
       <h2>Retos y medallas</h2>
-      <p v-if="!rewards.length && !busy" class="muted">
-        Todavía no tienes retos inscritos.
-      </p>
+      <div v-if="!rewards.length && !busy" class="reward-empty">
+        <i class="pi pi-trophy" aria-hidden="true"></i>
+        <h3>Tu próxima historia de constancia empieza aquí</h3>
+        <p>{{ available ? 'Elige una planta con dispositivo, verifica tu billetera e inicia tu primer reto de 30 días.' : 'Aún no tienes retos inscritos. Mientras se prepara el programa, agrega tu planta y vincula un dispositivo.' }}</p>
+        <router-link class="ps-btn ps-btn--outline" :to="!plants.length ? '/plants' : '/iot'">{{ !plants.length ? 'Agregar mi planta' : 'Ver mis dispositivos' }}</router-link>
+      </div>
       <article v-for="item in rewards" :key="item.id" class="reward-entry">
         <h3>
           {{
@@ -561,6 +563,13 @@ onBeforeUnmount(() => {
 </template>
 <style src="../styles/intelligence.css"></style>
 <style scoped>
+.reward-context { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; color:var(--ps-text-secondary); font-size:.85rem; margin-bottom:1.5rem; }
+.reward-context details { flex-basis:100%; }
+.reward-context summary { cursor:pointer; }
+.reward-context p { max-width:75ch; line-height:1.6; }
+.reward-empty { text-align:center; padding:2.5rem 1rem; }
+.reward-empty > i { font-size:2rem; color:var(--ps-primary); }
+.reward-empty p { max-width:55ch; margin:1rem auto 1.5rem; color:var(--ps-text-secondary); line-height:1.7; }
 .wallet-address {
   overflow-wrap: anywhere;
 }
